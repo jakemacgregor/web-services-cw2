@@ -1,3 +1,5 @@
+import payApp.views as views
+
 """cm18jpjm_payment_service URL Configuration
 
 The `urlpatterns` list routes URLs to views. For more information please see:
@@ -18,4 +20,11 @@ from django.urls import path
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('order/new/', views.new_order),
+    path('order/add/', views.add_item),
+    path('order/<int:order_id>', views.get_order_details),
+    path('order/<int:order_id>/status', views.get_order_status),
+    path('paymentmethod/new/', views.register_payment_method),
+    path('order/pay/', views.pay_for_order),
+    path('order/cancel/', views.cancel_order),
 ]

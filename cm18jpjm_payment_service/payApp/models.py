@@ -1,5 +1,6 @@
 from django.db import models
 
+
 class PaymentMethodDetails(models.Model):
     card_number = models.BigIntegerField
     cvv = models.IntegerField

@@ -1,7 +1,7 @@
-from enum import Enum
+from enum import IntEnum
 
 
-class Status(Enum):
+class Status(IntEnum):
     ORDER_CREATED = 0
     PENDING = 1
     SUCCESSFUL = 2

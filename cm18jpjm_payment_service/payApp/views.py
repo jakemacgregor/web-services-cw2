@@ -4,6 +4,7 @@ import json
 from django.core.exceptions import ObjectDoesNotExist
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
+from django.forms.models import model_to_dict
 from . import models
 from . import status
 
@@ -18,9 +19,9 @@ def new_order(request):
         http_bad_req.status_code = 405
         return http_bad_req
 
-    params = request.POST
+    params = json.loads(request.body)
     order = models.OrderDetails.objects.create(total_price =0.00, payment_status=status.Status.ORDER_CREATED,
-                                               payee_order_id=params["payee_order_id"])
+                                               payee_order_id=params.get("payee_order_id", False))
 
     payload = {"order_id": order.id}
     response = HttpResponse(json.dumps(payload))
@@ -41,17 +42,18 @@ def add_item(request):
         http_bad_req.status_code = 405
         return http_bad_req
 
-    params = request.POST
+    params = json.loads(request.body)
     try:
-        ord = models.OrderDetails.objects.get(id=params["order_id"])
+        ord = models.OrderDetails.objects.get(id=params.get('order_id'))
     except ObjectDoesNotExist:
         http_bad_req.content = "Order ID does not exist\n"
         http_bad_req.status_code = 404
         return http_bad_req
 
-    models.ItemDetails.objects.create(order=ord, item_name=params["item_name"], item_price=params["item_price"])
-    response = HttpResponse()
-    response["Content-Type"] = 'text/plain'
+    models.ItemDetails.objects.create(order=ord, item_type=params.get("item_type"), item_price=params.get("item_price"),
+                                      payee_item_id=params.get("payee_item_id"), metadata=params.get("metadata"))
+    response = HttpResponse(json.dumps({"error_code": ""}))
+    response["Content-Type"] = 'application/json'
     response.status_code = 200
     response.reason_phrase = "OK"
     return response
@@ -74,10 +76,13 @@ def get_order_details(request, order_id):
         return http_bad_req
 
     items = models.ItemDetails.objects.filter(order=order.id)
-    item_list = ""
+    item_list = []
     for i in items:
-        item_list.join(f"{i['item_name']}; ")
-    payload = {"order_id": order.id, "order_item_quantity": len(items), "order_value": order.total_price,
+        d = model_to_dict(i)
+        d["item_price"] = float(d["item_price"])
+        item_list.append(d)
+    print(item_list)
+    payload = {"order_id": order.id, "order_item_quantity": len(items), "order_value": float(order.total_price),
                "order_payment_status": order.payment_status, "items": item_list}
     response = HttpResponse(json.dumps(payload))
     response["Content-Type"] = 'application/json'
@@ -122,18 +127,19 @@ def register_payment_method(request):
         http_bad_req.status_code = 405
         return http_bad_req
 
-    params = request.POST
+    params = json.loads(request.body)
 
-    # TODO: timestamps
+    exp = datetime.datetime.strptime(params["expiry_date"], "%m/%y")
     pm = models.PaymentMethodDetails.objects.create(card_number=params["card_number"], cvv=params["cvv"],
                                                     cardholder_name=params["cardholder_name"],
-                                                    expiry_date=datetime.date.today())
+                                                    expiry_date=exp)
     payload = {"payment_method_id": pm.id}
     response = HttpResponse(json.dumps(payload))
     response["Content-Type"] = 'application/json'
     response.status_code = 200
     response.reason_phrase = "OK"
 
+    return response
 
 @csrf_exempt
 def pay_for_order(request):
@@ -145,7 +151,7 @@ def pay_for_order(request):
         http_bad_req.status_code = 405
         return http_bad_req
 
-    params = request.POST
+    params = json.loads(request.body)
     try:
         order = models.OrderDetails.objects.get(id=params["order_id"])
         pm = models.PaymentMethodDetails.objects.get(id=params["payment_method_id"])
@@ -159,11 +165,11 @@ def pay_for_order(request):
         http_bad_req.status_code = 405
         return http_bad_req
 
-    order.payment_method = pm.id
+    order.payment_method = pm
     order.payment_status = status.Status.PENDING
     order.save()
 
-    response = HttpResponse()
+    response = HttpResponse(json.dumps({"error_code": ""}))
     response["Content-Type"] = 'text/plain'
     response.status_code = 200
     response.reason_phrase = "OK"
@@ -180,7 +186,7 @@ def cancel_order(request):
         http_bad_req.status_code = 405
         return http_bad_req
 
-    params = request.POST
+    params = json.loads(request.body)
     try:
         order = models.OrderDetails.objects.get(id=params["order_id"])
         pm = models.PaymentMethodDetails.objects.get(id=params["payment_method_id"])
@@ -192,7 +198,7 @@ def cancel_order(request):
     order.payment_status = status.Status.CANCELLED
     order.save()
 
-    response = HttpResponse()
+    response = HttpResponse(json.dumps({"error_code": ""}))
     response["Content-Type"] = 'text/plain'
     response.status_code = 200
     response.reason_phrase = "OK"

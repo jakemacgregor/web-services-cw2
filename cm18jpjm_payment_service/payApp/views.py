@@ -1,4 +1,5 @@
 import datetime
+import decimal
 import json
 
 from django.core.exceptions import ObjectDoesNotExist
@@ -52,6 +53,9 @@ def add_item(request):
 
     models.ItemDetails.objects.create(order=ord, item_type=params.get("item_type"), item_price=params.get("item_price"),
                                       payee_item_id=params.get("payee_item_id"), metadata=params.get("metadata"))
+    ord.total_price = ord.total_price + decimal.Decimal(params.get("item_price"))
+    ord.save()
+
     response = HttpResponse(json.dumps({"error_code": ""}))
     response["Content-Type"] = 'application/json'
     response.status_code = 200

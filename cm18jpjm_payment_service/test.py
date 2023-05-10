@@ -1,7 +1,7 @@
 import requests
 
 # Tests each view in turn
-if bool(input("Use pythonanywhere?")) == True:
+if bool(input("Use pythonanywhere? (enter True if not using localhost)")):
     urlprefix = "http://cm18jpjm.pythonanywhere.com/"
 else:
     urlprefix = "http://127.0.0.1:8000/"

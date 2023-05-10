@@ -14,15 +14,20 @@ from . import status
 def new_order(request):
     http_bad_req = HttpResponseBadRequest()
     http_bad_req["Content-Type"] = 'text/plain'
-
     if request.method != "POST":
         http_bad_req.content = "POST request expected\n"
         http_bad_req.status_code = 405
         return http_bad_req
 
     params = json.loads(request.body)
-    order = models.OrderDetails.objects.create(total_price =0.00, payment_status=status.Status.ORDER_CREATED,
-                                               payee_order_id=params.get("payee_order_id", False))
+    payee_order_id = params.get("payee_order_id")
+    if payee_order_id is None:
+        http_bad_req.content = "payee_order_id missing\n"
+        http_bad_req.status_code = 405
+        return http_bad_req
+
+    order = models.OrderDetails.objects.create(total_price=0.00, payment_status=status.Status.ORDER_CREATED,
+                                               payee_order_id=payee_order_id)
 
     payload = {"order_id": order.id}
     response = HttpResponse(json.dumps(payload))
@@ -37,23 +42,32 @@ def new_order(request):
 def add_item(request):
     http_bad_req = HttpResponseBadRequest()
     http_bad_req["Content-Type"] = 'text/plain'
-
     if request.method != "POST":
         http_bad_req.content = "POST request expected\n"
         http_bad_req.status_code = 405
         return http_bad_req
 
     params = json.loads(request.body)
+    order_id = params.get('order_id', False)
+    item_type = params.get('item_type', False)
+    item_price = params.get('item_price', False)
+    payee_item_id = params.get('payee_item_id', False)
+    metadata = params.get('metadata', False)
+    if not (order_id and item_type and item_price and payee_item_id and metadata):
+        http_bad_req.content = "Missing parameter\n"
+        http_bad_req.status_code = 405
+        return http_bad_req
+
     try:
-        ord = models.OrderDetails.objects.get(id=params.get('order_id'))
+        ord = models.OrderDetails.objects.get(id=order_id)
     except ObjectDoesNotExist:
         http_bad_req.content = "Order ID does not exist\n"
         http_bad_req.status_code = 404
         return http_bad_req
 
-    models.ItemDetails.objects.create(order=ord, item_type=params.get("item_type"), item_price=params.get("item_price"),
-                                      payee_item_id=params.get("payee_item_id"), metadata=params.get("metadata"))
-    ord.total_price = ord.total_price + decimal.Decimal(params.get("item_price"))
+    models.ItemDetails.objects.create(order=ord, item_type=item_type, item_price=item_price,
+                                      payee_item_id=payee_item_id, metadata=metadata)
+    ord.total_price = ord.total_price + decimal.Decimal(item_price)
     ord.save()
 
     response = HttpResponse(json.dumps({"error_code": ""}))
@@ -66,7 +80,6 @@ def add_item(request):
 def get_order_details(request, order_id):
     http_bad_req = HttpResponseBadRequest()
     http_bad_req["Content-Type"] = 'text/plain'
-
     if request.method != "GET":
         http_bad_req.content = "GET request expected\n"
         http_bad_req.status_code = 405
@@ -99,7 +112,6 @@ def get_order_details(request, order_id):
 def get_order_status(request, order_id):
     http_bad_req = HttpResponseBadRequest()
     http_bad_req["Content-Type"] = 'text/plain'
-
     if request.method != "GET":
         http_bad_req.content = "GET request expected\n"
         http_bad_req.status_code = 405
@@ -125,13 +137,20 @@ def get_order_status(request, order_id):
 def register_payment_method(request):
     http_bad_req = HttpResponseBadRequest()
     http_bad_req["Content-Type"] = 'text/plain'
-
     if request.method != "POST":
         http_bad_req.content = "POST request expected\n"
         http_bad_req.status_code = 405
         return http_bad_req
 
     params = json.loads(request.body)
+    expiry_date = params.get('expiry_date', False)
+    card_number = params.get('card_number', False)
+    cvv = params.get('cvv', False)
+    cardholder_name = params.get('cardholder_name', False)
+    if not (expiry_date and card_number and cvv and cardholder_name):
+        http_bad_req.content = "Missing parameter\n"
+        http_bad_req.status_code = 405
+        return http_bad_req
 
     exp = datetime.datetime.strptime(params["expiry_date"], "%m/%y")
     pm = models.PaymentMethodDetails.objects.create(card_number=params["card_number"], cvv=params["cvv"],
@@ -145,20 +164,27 @@ def register_payment_method(request):
 
     return response
 
+
 @csrf_exempt
 def pay_for_order(request):
     http_bad_req = HttpResponseBadRequest()
     http_bad_req["Content-Type"] = 'text/plain'
-
     if request.method != "POST":
         http_bad_req.content = "POST request expected\n"
         http_bad_req.status_code = 405
         return http_bad_req
 
     params = json.loads(request.body)
+    order_id = params.get('order_id')
+    payment_method_id = params.get('payment_method_id')
+    if not (order_id and payment_method_id):
+        http_bad_req.content = "Missing parameter\n"
+        http_bad_req.status_code = 405
+        return http_bad_req
+
     try:
-        order = models.OrderDetails.objects.get(id=params["order_id"])
-        pm = models.PaymentMethodDetails.objects.get(id=params["payment_method_id"])
+        order = models.OrderDetails.objects.get(id=order_id)
+        pm = models.PaymentMethodDetails.objects.get(id=payment_method_id)
     except ObjectDoesNotExist:
         http_bad_req.content = "ID does not exist\n"
         http_bad_req.status_code = 404
@@ -184,16 +210,22 @@ def pay_for_order(request):
 def cancel_order(request):
     http_bad_req = HttpResponseBadRequest()
     http_bad_req["Content-Type"] = 'text/plain'
-
     if request.method != "POST":
         http_bad_req.content = "POST request expected\n"
         http_bad_req.status_code = 405
         return http_bad_req
 
     params = json.loads(request.body)
+    order_id = params.get('order_id')
+    payment_method_id = params.get('payment_method_id')
+    if not (order_id and payment_method_id):
+        http_bad_req.content = "Missing parameter\n"
+        http_bad_req.status_code = 405
+        return http_bad_req
+
     try:
-        order = models.OrderDetails.objects.get(id=params["order_id"])
-        pm = models.PaymentMethodDetails.objects.get(id=params["payment_method_id"])
+        order = models.OrderDetails.objects.get(id=order_id)
+        pm = models.PaymentMethodDetails.objects.get(id=payment_method_id)
     except ObjectDoesNotExist:
         http_bad_req.content = "ID does not exist\n"
         http_bad_req.status_code = 404
